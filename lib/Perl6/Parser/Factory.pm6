@@ -527,6 +527,7 @@ my role Constructor-from-sample {
 class Perl6::Visible is Perl6::Element { }
 class Perl6::Operator is Perl6::Visible { }
 class Perl6::String is Perl6::Visible { }
+class Perl6::Catch-All {...}
 
 my role BasicTextual {
 	also does Textual;
@@ -754,6 +755,7 @@ my role Branching does Child {
 
 class Perl6::Catch-All is Perl6::Visible {
 	also does BasicTextual;
+    also does Constructor-from-match;
 }
 
 class Perl6::Whatever is Perl6::Visible {
@@ -1810,6 +1812,19 @@ class Perl6::Parser::Factory {
 					);
 					$remainder = '';
 				}
+                when m{ ^ 'use ' } {
+                    $child.append(Perl6::Bareword.from-int($left-margin + $from, 'use'));
+                    $left-margin += 3;
+                    $child.append(Perl6::WS.from-int($left-margin + $from, ' '));
+                    $remainder = '';
+                }
+                when m{ ^ ';' } {
+                    $child.append(Perl6::Semicolon.from-int($from + $left-margin, ';'));
+                    $remainder = '';
+                }
+                default {
+                    die "Unhandled remainder: [$remainder]";
+                }
 			}
 		}
 
@@ -1918,6 +1933,10 @@ class Perl6::Parser::Factory {
 
 	method build( Mu $p ) returns Perl6::Element {
 		my $_child = Perl6::Element-List.new;
+        if $p.hash.<lang-version> {
+            $_child.append(self._lang-version( $p.hash.<lang-version> ));
+        }
+
 		$_child.append(
 			self._statementlist( $p.hash.<statementlist> )
 		);
@@ -6674,10 +6693,17 @@ class Perl6::Parser::Factory {
 		$child;
 	}
 
+    method _lang-version( Mu $p ) returns Perl6::Element-List {
+        my $child = Perl6::Element-List.new;
+        $child.append(self._version($p.hash.<version>));
+        $child;
+    }
+
 	method _statementlist( Mu $p ) returns Perl6::Element-List {
 		my $child = Perl6::Element-List.new;
 
 		for $p.hash.<statement>.list {
+            next if $_.Str.chars == 0;
 			my $_child = Perl6::Element-List.new;
 			$_child.append( self._statement( $_ ) );
 			# Do *NOT* remove this, use it to replace whatever
@@ -6695,13 +6721,13 @@ class Perl6::Parser::Factory {
 					)
 				);
 			}
-			my Str $temp = $p.Str.substr(
+			my Str $temp = $_child.child.elems > 0 ?? $p.Str.substr(
 				$_child.child.[*-1].to - $p.from
-			);
+			) !! ';';
 			if $temp ~~ m{ ^ (';') ( \s* ) } {
 				$_child.append(
 					Perl6::Semicolon.from-int(
-						$_child.child.[*-1].to,
+						$_child.child.elems > 0 ?? $_child.child.[*-1].to !! 4,
 						$0.Str
 					)
 				);
