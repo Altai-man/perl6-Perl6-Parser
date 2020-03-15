@@ -551,9 +551,8 @@ class Perl6::Element-List {
 			my %classified = classify {
 				$p.hash.{$_}.Str ?? 'with' !! 'without'
 			}, $p.hash.keys;
-			my Str @keys-with-content = @( %classified<with> );
-			my Str @keys-without-content =
-				@( %classified<without> );
+            my Str @keys-with-content =    @$_ with %classified<with>;
+            my Str @keys-without-content = @$_ with %classified<without>;
 
 			$*ERR.say( "With content: {@keys-with-content.gist}" );
 			$*ERR.say(
@@ -4767,14 +4766,14 @@ class Perl6::Parser::Factory {
 	method _param_var( Mu $p ) returns Perl6::Element-List {
 		my $child = Perl6::Element-List.new;
 		given $p {
-			when self.assert-hash( $_, [< name sigil twigil >] ) {
+			when self.assert-hash( $_, [< sigil name declname twigil >] ) {
 				$child.append(
 					self.__Variable(
 						$_, $_.hash.<name>
 					)
 				);
 			}
-			when self.assert-hash( $_, [< name sigil >] ) {
+			when self.assert-hash( $_, [< sigil name declname >] ) {
 				$child.append(
 					self.__Variable(
 						$_, $_.hash.<name>
@@ -4791,7 +4790,7 @@ class Perl6::Parser::Factory {
 					)
 				);
 			}
-			when self.assert-hash( $_, [< sigil >] ) {
+			when self.assert-hash( $_, [< sigil declname >] ) {
 				#$child.append( self._sigil( $_.hash.<sigil> ) );
 				# PURE-PERL nonterminal
 				$child.append(
@@ -7366,7 +7365,7 @@ class Perl6::Parser::Factory {
 				);
 			}
 			when self.assert-hash( $_,
-					[< name sigil twigil >] ) {
+					[< twigil declname name sigil >] ) {
 				$child.append(
 					self.___Variable_Name( $_, $name )
 				);
@@ -7388,7 +7387,7 @@ class Perl6::Parser::Factory {
 					)
 				);
 			}
-			when self.assert-hash( $_, [< name sigil >] ) {
+			when self.assert-hash( $_, [< sigil declname name >] ) {
 				$child.append(
 					self.___Variable_Name( $_, $name )
 				);
