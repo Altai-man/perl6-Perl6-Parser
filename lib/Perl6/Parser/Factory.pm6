@@ -1816,11 +1816,13 @@ class Perl6::Parser::Factory {
                     $child.append(Perl6::Bareword.from-int($left-margin + $from, 'use'));
                     $left-margin += 3;
                     $child.append(Perl6::WS.from-int($left-margin + $from, ' '));
-                    $remainder = '';
+                    $left-margin += 1;
+                    $remainder = $remainder.substr(4);
                 }
                 when m{ ^ ';' } {
                     $child.append(Perl6::Semicolon.from-int($from + $left-margin, ';'));
-                    $remainder = '';
+                    $left-margin += 1;
+                    $remainder = $remainder.substr(1);
                 }
                 default {
                     die "Unhandled remainder: [$remainder]";
@@ -6695,7 +6697,9 @@ class Perl6::Parser::Factory {
 
     method _lang-version( Mu $p ) returns Perl6::Element-List {
         my $child = Perl6::Element-List.new;
-        $child.append(self._version($p.hash.<version>));
+        if ($p.hash.<version>) {
+            $child.append(self._version($p.hash.<version>));
+        }
         $child;
     }
 
