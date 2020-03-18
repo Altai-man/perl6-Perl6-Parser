@@ -4243,7 +4243,7 @@ class Perl6::Parser::Factory {
 			for $p.list {
 				if self.assert-hash( $_,
 					[< atom quantifier
-					   separator sigfinal >] ) {
+					   separator sigfinal sigmaybe >] ) {
 					$child.append(
 						self._atom( $_.hash.<atom> )
 					);
@@ -4259,7 +4259,7 @@ class Perl6::Parser::Factory {
 					);
 				}
 				elsif self.assert-hash( $_,
-					[< atom quantifier sigmaybe >] ) {
+					[< atom quantifier sigmaybe sigfinal >] ) {
 					# XXX sigmaybe is unused
 					$child.append(
 						self._atom( $_.hash.<atom> )
