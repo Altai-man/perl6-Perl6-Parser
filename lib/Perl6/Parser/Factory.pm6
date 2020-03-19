@@ -1059,6 +1059,13 @@ class Perl6::Bareword is Perl6::Visible {
 	also does Constructor-from-int;
 }
 class Perl6::SubroutineDeclaration is Perl6::Bareword { }
+class Perl6::StatementControl is Perl6::Bareword { }
+class Perl6::TypeName is Perl6::Bareword { }
+class Perl6::PackageKeyword is Perl6::Bareword { }
+class Perl6::RoutineKeyword is Perl6::Bareword { }
+class Perl6::ScopeKeyword is Perl6::Bareword { }
+class Perl6::RegexAssertion is Perl6::Bareword { }
+class Perl6::RegexQuantifier is Perl6::Bareword { }
 
 class Perl6::Adverb is Perl6::Visible {
 	also does BasicTextual;
@@ -1529,6 +1536,22 @@ class Perl6::Parser::Actions {
 			:content( $/.Str )
 		)
 	}
+	method __RegexQuantifier( $/ ) {
+		Perl6::RegexQuantifier.new(
+			:factory-line-number( callframe(1).line ),
+			:from( $/.from + $.offset ),
+			:to( $/.to + $.offset ),
+			:content( $/.Str )
+		)
+	}
+	method __RegexAssertion( $/ ) {
+		Perl6::RegexAssertion.new(
+			:factory-line-number( callframe(1).line ),
+			:from( $/.from + $.offset ),
+			:to( $/.to + $.offset ),
+			:content( $/.Str )
+		)
+	}
 	method __Infinity( $/ ) {
 		Perl6::Infinity.new(
 			:factory-line-number( callframe(1).line ),
@@ -1571,7 +1594,7 @@ class Perl6::Parser::Actions {
 	}
 
 	method _assertion_fallthrough( $/ ) {
-		make self.__Bareword( $/ )
+		make self.__RegexAssertion( $/ )
 	}
 	method _circumfix_content( $/ ) {
 		make self.__String__WordQuoting( $/ )
@@ -1613,7 +1636,11 @@ class Perl6::Parser::Actions {
 		make self.__Backslash( $/ )
 	}
 	method _name_identifier( $/ ) {
-		make self.__Bareword( $/ )
+        if $*WRAP-TYPE === Perl6::PackageName {
+            make self.__PackageName( $/ )
+        } else {
+            make self.__Bareword($/)
+        }
 	}
 	method _morename( $/ ) { # XXX This is the reason for leading ::
 				 # XXX There's only one in the grammar so far
@@ -1635,7 +1662,7 @@ class Perl6::Parser::Actions {
 		make self.__Bareword( $/ )
 	}
 	method _septype( $/ ) {
-		make self.__Bareword( $/ )
+		make self.__RegexQuantifier( $/ )
 	}
 	method _sigil( $/ ) {
 		make self.__Bareword( $/ ) # XXX
@@ -1935,6 +1962,7 @@ class Perl6::Parser::Factory {
 
 	method build( Mu $p ) returns Perl6::Element {
 		my $_child = Perl6::Element-List.new;
+        my $*WRAP-TYPE is default(Nil);
         if $p.hash.<lang-version> {
             $_child.append(self._lang-version( $p.hash.<lang-version> ));
         }
@@ -3120,7 +3148,7 @@ class Perl6::Parser::Factory {
 				self.__Infix(
 					$p,
 					Perl6::Operator::Infix.from-sample(
-						$p, $p.hash.<infix>.Str ~ 
+						$p, $p.hash.<infix>.Str ~
 						$p.hash.<infix_postfix_meta_operator>.Str
 					)
 				)
@@ -3129,7 +3157,9 @@ class Perl6::Parser::Factory {
 		elsif self.assert-hash( $p,
 				[< dotty OPER >],
 				[< postfix_prefix_meta_operator >] ) {
+            $*WRAP-TYPE = Perl6::PackageName;
 			$child.append( self._EXPR( $p.list.[0] ) );
+            $*WRAP-TYPE = Nil;
 			if $p.Str ~~ m{ ('>>') } {
 				$child.append(
 					Perl6::Operator::Infix.from-int(
@@ -3363,7 +3393,7 @@ class Perl6::Parser::Factory {
 						$0.Str
 					)
 				);
-				
+
 				$child.append( self._EXPR( $p.list.[1] ) );
 				$child.append(
 					Perl6::Operator::Infix.from-sample(
@@ -4020,6 +4050,7 @@ class Perl6::Parser::Factory {
 
 	method _module_name( Mu $p ) returns Perl6::Element-List {
 		my $child = Perl6::Element-List.new;
+        $*WRAP-TYPE = Perl6::PackageName;
 		given $p {
 			when self.assert-hash( $_, [< longname >] ) {
 				$child.append(
@@ -4243,7 +4274,7 @@ class Perl6::Parser::Factory {
 			for $p.list {
 				if self.assert-hash( $_,
 					[< atom quantifier
-					   separator sigfinal sigmaybe >] ) {
+					   separator sigfinal sigmaybe >] ) || self.assert-hash($_, [< atom quantifier separator sigfinal >]) {
 					$child.append(
 						self._atom( $_.hash.<atom> )
 					);
@@ -4259,7 +4290,7 @@ class Perl6::Parser::Factory {
 					);
 				}
 				elsif self.assert-hash( $_,
-					[< atom quantifier sigmaybe sigfinal >] ) {
+					[< atom quantifier sigmaybe sigfinal >] ) || self.assert-hash($_, [< atom quantifier sigmaybe >]) {
 					# XXX sigmaybe is unused
 					$child.append(
 						self._atom( $_.hash.<atom> )
@@ -4545,7 +4576,9 @@ class Perl6::Parser::Factory {
 		my $child = Perl6::Element-List.new;
 		given $p {
 			when self.assert-hash( $_, [< package_def sym >] ) {
+                $*WRAP-TYPE = Perl6::PackageKeyword;
 				$child.append( self._sym( $_.hash.<sym> ) );
+                $*WRAP-TYPE = Nil;
 				$child.append(
 					self._package_def(
 						$_.hash.<package_def>
@@ -5153,11 +5186,13 @@ class Perl6::Parser::Factory {
 			when self.assert-hash( $_,
 					[< min sym >],
 					[< backmod >] ) {
+                $*WRAP-TYPE = Perl6::RegexQuantifier;
 				$child.append( self._sym( $_.hash.<sym> ) );
 				$child.append( self._min( $_.hash.<min> ) );
 			}
 			when self.assert-hash( $_, [< backmod sym >] ) {
 				# XXX backmod unused
+                $*WRAP-TYPE = Perl6::RegexQuantifier;
 				$child.append( self._sym( $_.hash.<sym> ) );
 			}
 			default {
@@ -5509,7 +5544,9 @@ class Perl6::Parser::Factory {
 		my $child = Perl6::Element-List.new;
 		given $p {
 			when self.assert-hash( $_, [< regex_def sym >] ) {
+                $*WRAP-TYPE = Perl6::RoutineKeyword;
 				$child.append( self._sym( $_.hash.<sym> ) );
+                $*WRAP-TYPE = Nil;
 				$child.append(
 					self._regex_def( $_.hash.<regex_def> )
 				);
@@ -5858,7 +5895,9 @@ class Perl6::Parser::Factory {
 		my $child = Perl6::Element-List.new;
 		given $p {
 			when self.assert-hash( $_, [< scoped sym >] ) {
+                $*WRAP-TYPE = Perl6::ScopeKeyword;
 				$child.append( self._sym( $_.hash.<sym> ) );
+                $*WRAP-TYPE = Nil;
 				$child.append(
 					self._scoped( $_.hash.<scoped> )
 				);
@@ -6479,6 +6518,7 @@ class Perl6::Parser::Factory {
 	#
 	method _statement_control( Mu $p ) returns Perl6::Element-List {
 		my $child = Perl6::Element-List.new;
+        $*WRAP-TYPE = Perl6::StatementControl;
 		given $p {
 			when self.assert-hash( $_, [< block e1 e2 e3 sym >] ) {
 				my $_child = Perl6::Element-List.new;
@@ -6534,7 +6574,7 @@ class Perl6::Parser::Factory {
 				$child.append(
 					Perl6::Operator::Circumfix.new(
 						:factory-line-number(
-							callframe(1).line 
+							callframe(1).line
 						),
 						:from( $_.hash.<sym>.to + $left-margin ),
 						:to( $_.hash.<e3>.to + $0.from + $0.chars ),
@@ -6615,7 +6655,7 @@ class Perl6::Parser::Factory {
 					$_.hash.<sym>.[0].Str ~~ m{ if } {
 					for $_.hash.<sym>.list.keys -> $k {
 						$child.append(
-							Perl6::Bareword.from-match( 
+							Perl6::StatementControl.from-match(
 								$_.hash.<sym>.list.[$k]
 							)
 						);
@@ -6860,7 +6900,7 @@ class Perl6::Parser::Factory {
 				}
 				default {
 					$child.append(
-						Perl6::Bareword.from-match( $p )
+                            ($*WRAP-TYPE !=== Nil ?? $*WRAP-TYPE !! Perl6::Bareword).from-match( $p )
 					);
 				}
 			}
