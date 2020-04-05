@@ -539,6 +539,8 @@ class Perl6::Parser:ver<0.3.0> {
 	# testing purposes.
 	#
 	method parse( Str $source ) {
+        # Workaround for https://github.com/rakudo/rakudo/issues/3579
+        my %*COMPILING := nqp::hash('%?OPTIONS', nqp::hash());
 		my $*LINEPOSCACHE;
 		my $compiler := nqp::getcomp('Raku') || nqp::getcomp('perl6');
 		my $g := nqp::findmethod(
