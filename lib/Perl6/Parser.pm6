@@ -539,8 +539,6 @@ class Perl6::Parser:ver<0.3.0> {
 	# testing purposes.
 	#
 	method parse( Str $source ) {
-        # Workaround for https://github.com/rakudo/rakudo/issues/3579
-        my %*COMPILING := nqp::hash('%?OPTIONS', nqp::hash());
 		my $*LINEPOSCACHE;
 		my $compiler := nqp::getcomp('Raku') || nqp::getcomp('perl6');
 		my $g := nqp::findmethod(
@@ -561,13 +559,7 @@ class Perl6::Parser:ver<0.3.0> {
 		for @( $/ ) -> $CHECK {
 			@.munged-CHECK.push: $CHECK.from;
 		}
-		my $parsed = $g.parse(
-			$munged-source,
-			:p( 0 ),
-			:actions( $a )
-		);
-
-		$parsed;
+        $compiler.compile($munged-source, target => 'parse', :compunit_ok);
 	}
 
 	method build-tree( Mu $parsed ) {
