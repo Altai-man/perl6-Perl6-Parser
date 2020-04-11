@@ -132,7 +132,7 @@ L<Perl6::Number>
     L<Perl6::Number::Radix>
     L<Perl6::Number::Imaginary>
 
-There likely won't be a L<Perl6::Number::Complex>. While it's relatively easy to figure out that C<my $z = 3+2i;> is a complex number, who's to say what the intet behind C<my $z = 3*$a+2i> is, or a more complex high-order polynomial. Best to just assert that C<2i> is an imaginary number, and leave it to the client to form the proper interpretation.
+There likely won't be a L<Perl6::Number::Complex>. While it's relatively easy to figure out that C<my $z = 3+2i;> is a complex number, who's to say what the intent behind C<my $z = 3*$a+2i> is, or a more complex high-order polynomial. Best to just assert that C<2i> is an imaginary number, and leave it to the client to form the proper interpretation.
 
 =cut
 
@@ -2070,6 +2070,9 @@ class Perl6::Parser::Factory {
 			when self.assert-hash( $_, [< EXPR >] ) {
 				$child.append( self._EXPR( $_.hash.<EXPR> ) );
 			}
+            when self.assert-hash( $_, [< arglist >] ) {
+				$child.append(self._arglist( $_.hash.<arglist> ));
+			}
 			default {
 				$child.fall-through( $_ );
 			}
@@ -2119,6 +2122,12 @@ class Perl6::Parser::Factory {
 				self._cclass_elem( $p.hash.<cclass_elem> )
 			);
 		}
+        elsif self.assert-hash( $p, [< longname arglist >] ) {
+            $child.append(self._longname( $p.hash.<longname> ));
+            $child.append(Perl6::Balanced::Enter.from-int($p.hash.<longname>.to, '('));
+            $child.append(self._arglist( $p.hash.<arglist> ));
+            $child.append(Perl6::Balanced::Exit.from-int($p.hash.<arglist>.to, PAREN-CLOSE));
+        }
 		elsif $p.Str {
 			# PURE-PERL parser
 			$child.append(
@@ -5578,6 +5587,11 @@ class Perl6::Parser::Factory {
 						$_.hash.<deflongname>
 					)
 				);
+                unless $_.hash.<signature>.Str.chars == 0 {
+                    $child.append(Perl6::Balanced::Enter.from-int($p.hash.<deflongname>.to, '('));
+                    $child.append(self._signature($_.hash.<signature>[0]));
+                    $child.append(Perl6::Balanced::Exit.from-int($p.hash.<signature>.to, PAREN-CLOSE));
+                }
 				$child.append(
 					Perl6::Block.from-outer-match(
 						$_.hash.<nibble>,
@@ -7599,6 +7613,9 @@ class Perl6::Parser::Factory {
 					self.___Variable_Name( $p, '' )
 				);
 			}
+            when self.assert-hash( $p, [< sigil index >] ) {
+                $child.append(self.___Variable_Name($p, $_.hash.<index>.Str));
+            }
 			default {
 				$child.fall-through( $_ );
 			}
