@@ -63,4 +63,12 @@ _END_
  }
 };
 
+subtest {
+    { ok round-trips(Q:to[_END_]), Q{connect4 golf}
+class Game {}
+my Game $game.=new( player_types => ( "H", 2 ) );
+_END_
+ }
+};
+
 done-testing;

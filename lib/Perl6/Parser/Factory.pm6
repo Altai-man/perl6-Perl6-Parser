@@ -7368,6 +7368,11 @@ class Perl6::Parser::Factory {
 					)
 				);
 			}
+            when self.assert-hash( $_, [< circumfix >]) {
+                $child.append(
+					self._circumfix( $_.hash.<circumfix> )
+				);
+            }
 			when self.assert-hash( $_,
 					[< OPER prefix >],
 					[< prefix_postfix_meta_operator >] ) {
