@@ -2071,7 +2071,7 @@ class Perl6::Parser::Factory {
 				$child.append( self._EXPR( $_.hash.<EXPR> ) );
 			}
             when self.assert-hash( $_, [< arglist >] ) {
-				$child.append(self._arglist( $_.hash.<arglist> ));
+                $child.append(self._arglist( $_.hash.<arglist> ));
 			}
 			default {
 				$child.fall-through( $_ );
@@ -6418,7 +6418,7 @@ class Perl6::Parser::Factory {
 					if $left-edge and $left-edge < $v.from {
 						$child.append(
 							Perl6::Operator::Infix.from-int(
-								$left-edge, ','
+								$left-edge, $_.hash.<param_sep>.list.sort(*.from)[$k-1].Str
 							)
 						);
 					}
@@ -6447,11 +6447,11 @@ class Perl6::Parser::Factory {
 					[< parameter >],
 					[< param_sep >] ) {
 				my Int $left-edge;
-				for $_.hash.<parameter>.list -> $q {
+				for $_.hash.<parameter>.list.kv -> $k, $q {
 					if $left-edge and $left-edge < $q.from {
 						$child.append(
 							Perl6::Operator::Infix.from-int(
-								$left-edge, ','
+								$left-edge, $_.hash.<param_sep>.list.sort(*.from)[$k-1].Str
 							)
 						);
 					}
@@ -6461,7 +6461,7 @@ class Perl6::Parser::Factory {
 				if $left-edge and $left-edge < $_.to {
 					$child.append(
 						Perl6::Operator::Infix.from-int(
-							$left-edge, ','
+							$left-edge, $_.hash.<param_sep>.list.sort(*.from).tail.Str
 						)
 					);
 				}
@@ -6643,11 +6643,11 @@ class Perl6::Parser::Factory {
 				my Str $x = $_.Str.substr(
 					0, $_.hash.<else>.from
 				);
-				if $x ~~ m{ << (else) >> } {
+				if $x ~~ m:g{ [<< (else) >>]+ } -> $match {
 					$child.append(
 						Perl6::Bareword.from-int(
-							$_.from + $0.from,
-							$0.Str
+							$_.from + $match.tail.from,
+							$match.tail.Str
 						)
 					);
 				}
@@ -7392,6 +7392,12 @@ class Perl6::Parser::Factory {
 			when self.assert-hash( $_, [< value >] ) {
 				$child.append( self._value( $_.hash.<value> ) );
 			}
+            when self.assert-hash( $_, [< sym >] ) {
+                $child.append(self._sym( $_.hash.<sym> ))
+            }
+            when self.assert-hash( $_, [< variable >] ) {
+                $child.append(self._variable($_.hash.<variable>));
+            }
 			default {
 				$child.fall-through( $_ );
 			}
@@ -7458,6 +7464,10 @@ class Perl6::Parser::Factory {
 				$child.append(
 					self.___Variable_Name( $_, $name )
 				);
+			}
+            when self.assert-hash( $_,
+					[< twigil sigil arglist desigilname >] ) {
+				$child.append(self.___Variable_Name( $_, $name ));
 			}
 			when self.assert-hash( $_,
 					[< desigilname sigil >] ) {
@@ -7620,6 +7630,12 @@ class Perl6::Parser::Factory {
 			}
             when self.assert-hash( $p, [< sigil index >] ) {
                 $child.append(self.___Variable_Name($p, $_.hash.<index>.Str));
+            }
+            when self.assert-hash( $_, [< twigil sigil arglist desigilname >]) {
+                $child.append(self.__Variable($_, $_.hash.<desigilname>));
+                $child.append(Perl6::Balanced::Enter.from-int($_.hash.<desigilname>.to, '('));
+                $child.append(self._arglist( $_.hash.<arglist> ));
+                $child.append(Perl6::Balanced::Exit.from-int($_.hash.<arglist>.to, PAREN-CLOSE));
             }
 			default {
 				$child.fall-through( $_ );
