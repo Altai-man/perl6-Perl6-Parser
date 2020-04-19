@@ -1066,6 +1066,7 @@ class Perl6::RoutineKeyword is Perl6::Bareword { }
 class Perl6::ScopeKeyword is Perl6::Bareword { }
 class Perl6::RegexAssertion is Perl6::Bareword { }
 class Perl6::RegexQuantifier is Perl6::Bareword { }
+class Perl6::Bang is Perl6::Bareword { }
 
 class Perl6::Adverb is Perl6::Visible {
 	also does BasicTextual;
@@ -1331,7 +1332,7 @@ grammar Perl6::Parser::Grammar {
 	token floating_point {
 	||	'-'? <[ 0 .. 9 ]>*
 		     [ '.' <[ 0 .. 9 ]>+ ]?
-		     [ 'e' '-'? <[ 0 .. 9 ]>+ ]?
+		     [ 'e' ['-'|'+']? <[ 0 .. 9 ]>+ ]?
 	}
 	# grammar Exp24 { rule term { <exp> | <digits> } } <-- 'exp', 'digits'
 	#
@@ -1384,7 +1385,7 @@ grammar Perl6::Parser::Grammar {
 		'->'
 	}
 	token _metachar_backslash {
-		'\\' <[ d D h H n N s S t T v V w W ]>
+		'\\' <[ d D h H n N s S t T v V w W . < > ( ) + * ? ]>
 	}
 	token _name_identifier {
 		<PackageName>
@@ -1402,10 +1403,10 @@ grammar Perl6::Parser::Grammar {
 		'>>' # XXX likely has other alternatives...
 	}
 	token _quant {
-		'*'
+		'*' ** 1..2
 	}
 	token _quotepair_adverb {
-		':' .
+		':' .+
 	}
 	token _septype {
 		'%'
@@ -1423,7 +1424,7 @@ grammar Perl6::Parser::Grammar {
 		<PackageName>
 	}
 	token _wu {
-		'while' # XXX The heck?
+		'while' | 'until' # XXX The heck?
 	}
 }
 
@@ -1848,6 +1849,16 @@ class Perl6::Parser::Factory {
                 }
                 when m{ ^ ';' } {
                     $child.append(Perl6::Semicolon.from-int($from + $left-margin, ';'));
+                    $left-margin += 1;
+                    $remainder = $remainder.substr(1);
+                }
+                when m{ ^ '\\' } {
+                    $child.append(Perl6::Bareword.from-int($from + $left-margin, '\\'));
+                    $left-margin += 1;
+                    $remainder = $remainder.substr(1);
+                }
+                when m{ ^ '!' } {
+                    $child.append(Perl6::Bang.from-int($from + $left-margin, '!'));
                     $left-margin += 1;
                     $remainder = $remainder.substr(1);
                 }
@@ -2793,6 +2804,12 @@ class Perl6::Parser::Factory {
 					self.parse( $_, '_floating_point' )
 				);
 			}
+            when self.assert-hash( $_, [< escale frac int coeff >] ) {
+				# PURE-PERL nonterminal
+				$child.append(
+					self.parse( $_, '_floating_point' )
+				);
+			}
 			when self.assert-hash( $_, [< coeff escale int >] ) {
 				#$child.append( self.__FloatingPoint( $_ ) );
 				# PURE-PERL nonterminal
@@ -3095,74 +3112,91 @@ class Perl6::Parser::Factory {
 #	}
 
 	method _EXPR( Mu $p ) returns Perl6::Element-List {
-		my $child = Perl6::Element-List.new;
-		if $p.Str ~~ m/ ^ \{ \s* ( \* ) \s* \} $ / and not $p.list {
-			# XXX shape is redundant
-			$child.append(
-				self._Block-from-match(
-					$p,
-					Perl6::Whatever.from-int(
-						$p.from + $0.from,
-						$0.Str
-					)
-				)
-			);
-		}
-		elsif self.assert-hash( $p,
-				[< dotty OPER
-				   postfix_prefix_meta_operator >] ) {
-			$child.append(
-				self.__Postfix(
-					$p,
-					self._postfix_prefix_meta_operator(
-						$p.hash.<postfix_prefix_meta_operator>
-					)
-				)
-			);
-			$child.append( self._dotty( $p.hash.<dotty> ) );
-		}
-		elsif self.assert-hash( $p, [< colonpair fake_infix OPER >] ) {
-			$child.append(
-				self.__Postfix(
-					$p,
-					self._colonpair( $p.hash.<colonpair> )
-				)
-			);
-		}
-		elsif self.assert-hash( $p,
-				[< OPER prefix
-				   prefix_postfix_meta_operator >] ) {
-			$child.append( self._prefix( $p.hash.<prefix> ) );
-			$child.append(
-				self._prefix_postfix_meta_operator(
-					$p.hash.<prefix_postfix_meta_operator>
-				)
-			);
-			$child.append( self._EXPR( $p.list.[0] ) );
-		}
-		elsif self.assert-hash( $p,
-				[< OPER infix_circumfix_meta_operator >] ) {
-			$child.append(
-				self.__Infix(
-					$p,
-					self._infix_circumfix_meta_operator(
-						$p.hash.<infix_circumfix_meta_operator>
-					)
-				)
-			);
-		}
-		elsif self.assert-hash( $p,
-				[< infix infix_postfix_meta_operator OPER >] ) {
-			$child.append(
-				self.__Infix(
-					$p,
-					Perl6::Operator::Infix.from-sample(
-						$p, $p.hash.<infix>.Str ~
-						$p.hash.<infix_postfix_meta_operator>.Str
-					)
-				)
-			);
-		}
+        my $child = Perl6::Element-List.new;
+        if $p.Str ~~ m/ ^ \{ \s* (\*) \s* \} $ / and not $p.list {
+            # XXX shape is redundant
+            $child.append(
+                    self._Block-from-match(
+                            $p,
+                            Perl6::Whatever.from-int(
+                                    $p.from + $0.from,
+                                    $0.Str
+                                    )
+                            )
+                    );
+        }
+        elsif self.assert-hash($p,
+                [< dotty OPER
+				   postfix_prefix_meta_operator >]) {
+            $child.append(
+                    self.__Postfix(
+                            $p,
+                            self._postfix_prefix_meta_operator(
+                                    $p.hash.<postfix_prefix_meta_operator>
+                                    )
+                            )
+                    );
+            $child.append(self._dotty($p.hash.<dotty>));
+        }
+        elsif self.assert-hash($p, [< colonpair fake_infix OPER >]) {
+            $child.append(
+                    self.__Postfix(
+                            $p,
+                            self._colonpair($p.hash.<colonpair>)
+                            )
+                    );
+        }
+        elsif self.assert-hash($p,
+                [< OPER prefix
+				   prefix_postfix_meta_operator >]) {
+            $child.append(self._prefix($p.hash.<prefix>));
+            $child.append(
+                    self._prefix_postfix_meta_operator(
+                            $p.hash.<prefix_postfix_meta_operator>
+                            )
+                    );
+            $child.append(self._EXPR($p.list.[0]));
+        }
+        elsif self.assert-hash($p,
+                [< OPER infix_circumfix_meta_operator >]) {
+            $child.append(
+                    self.__Infix(
+                            $p,
+                            self._infix_circumfix_meta_operator(
+                                    $p.hash.<infix_circumfix_meta_operator>
+                                    )
+                            )
+                    );
+        }
+        elsif self.assert-hash($p,
+                [< infix infix_postfix_meta_operator OPER >]) {
+            $child.append(
+                    self.__Infix(
+                            $p,
+                            Perl6::Operator::Infix.from-sample(
+                                    $p, $p.hash.<infix>.Str ~
+                                            $p.hash.<infix_postfix_meta_operator>.Str
+                                    )
+                            )
+                    );
+        }
+        elsif self.assert-hash($p, [< OPER privop >], [< postfix_prefix_meta_operator >]) {
+            if $p.list {
+                my $_child = Perl6::Element-List.new;
+                for $p.list {
+                    if self.assert-hash($_, [< variable >]) {
+                        $child.append(self._variable($_.hash.<variable>));
+                    }
+                    elsif self.assert-hash($_, [< sym >]) {
+                        $child.append(self._sym($_.hash.<sym>));
+                    }
+                    else {
+                        $child.fall-through($_);
+                    }
+                }
+            }
+            $child.append(self._privop( $p.hash.<privop> ));
+        }
 		elsif self.assert-hash( $p,
 				[< dotty OPER >],
 				[< postfix_prefix_meta_operator >] ) {
@@ -3253,6 +3287,37 @@ class Perl6::Parser::Factory {
 						)
 					);
 				}
+                elsif self.assert-hash( $v,
+						[< postcircumfix OPER >],
+						[< prefix_postfix_meta_operator >] ) {
+                    # FIXME this one is beyond horrible, some smart recursion has to do all of this... thing
+                    if $v.list {
+                        for $v.list -> $inner {
+                            if self.assert-hash($inner, [< OPER dotty >], [< postfix_prefix_meta_operator >]) {
+                                if $inner.list {
+                                    for $inner.list -> $innermost {
+                                        if self.assert-hash($innermost, [< value >]) {
+                                            $child.append(self._value($innermost.hash.<value>));
+                                        }
+                                        elsif self.assert-hash($innermost, [< variable >]) {
+                                            $child.append(self._variable($innermost.hash.<variable>));
+                                        }
+                                        else {
+                                            $child.fall-through($innermost);
+                                        }
+                                    }
+                                }
+                                $child.append(self._dotty($inner.hash.<dotty>));
+                            }
+                            elsif self.assert-hash($inner, [< variable >]) {
+                                $child.append(self._variable($inner.hash.<variable>));
+                            } else {
+                                $child.fall-through($inner);
+                            }
+                        }
+                    }
+					$child.append(self._postcircumfix($v.hash.<postcircumfix>));
+				}
 				elsif self.assert-hash( $v,
 						[< args identifier >] ) {
 					$child.append(
@@ -3291,8 +3356,7 @@ class Perl6::Parser::Factory {
 						);
 					}
 					else {
-				# XXX needs to be filled in
-				#		$child.fall-through( $_ );
+						$child.fall-through( $v );
 					}
 				}
 				elsif self.assert-hash( $v, [< sym >] ) {
@@ -3369,7 +3433,9 @@ class Perl6::Parser::Factory {
 							}
 						}
 					}
-				}
+				} else {
+                    #$child.fall-through($v);
+                }
 				if $k < $end {
 					my Str $x = $p.orig.Str.substr(
 						$p.list.[$k].to,
@@ -3473,6 +3539,12 @@ class Perl6::Parser::Factory {
 				)
 			);
 		}
+        elsif self.assert-hash( $p, [< longname arglist >] ) {
+            $child.append(self._longname($p.hash.<longname>));
+            $child.append(Perl6::Balanced::Enter.from-int($p.hash.<longname>.to, '['));
+            $child.append(self._arglist($p.hash.<arglist>));
+            $child.append(Perl6::Balanced::Exit.from-int($p.hash.<arglist>.to, ']'));
+        }
 		elsif self.assert-hash( $p, [< args longname >] ) {
 			$child.append( self._longname( $p.hash.<longname> ) );
 			if $p.hash.<args> and
@@ -4010,6 +4082,10 @@ class Perl6::Parser::Factory {
 				);
 				$child.append( self._args( $_.hash.<args> ) );
 			}
+            when self.assert-hash( $_, [< args variable >] ) {
+                $child.append(self._variable($_.hash.<variable>));
+                $child.append(self._args($_.hash.<args>));
+            }
 			when self.assert-hash( $_, [< variable >] ) {
 				$child.append(
 					self._variable( $_.hash.<variable> )
@@ -4026,6 +4102,22 @@ class Perl6::Parser::Factory {
 		}
 		$child;
 	}
+
+    method _privop( Mu $p ) returns Perl6::Element-List {
+        my $child = Perl6::Element-List.new;
+        if $p.Str ~~ m{ ('!') } {
+            $child.append(Perl6::Bareword.from-int($p.from, $0.Str));
+        }
+        given $p {
+            when self.assert-hash( $_, [< methodop >], [< Q >] ) {
+                $child.append( self._methodop( $_.hash.<methodop> ) );
+            }
+            default {
+                $child.fall-through($_);
+            }
+        }
+        $child;
+    }
 
 	method _min( Mu $p ) returns Perl6::Element-List {
 		my $child = Perl6::Element-List.new;
@@ -5505,6 +5597,12 @@ class Perl6::Parser::Factory {
 						self.parse( $_, '_quotepair_adverb' )
 					);
 				}
+                elsif self.assert-hash( $_, [< identifier circumfix >] ) {
+                    if $_.Str ~~ m{ (\S+?) ('(') } {
+                        $child.append(Perl6::Bareword.from-int($p.from, $0.Str));
+                    }
+                    $child.append(self._circumfix($_.hash.<circumfix>));
+                }
 				else {
 					$child.fall-through( $_ );
 				}
@@ -6427,22 +6525,26 @@ class Perl6::Parser::Factory {
 				}
 				my Str $x = $_.orig.Str.substr(
 					$_.hash.<parameter>.to,
-					$_.hash.<typename>.from -
-						$_.hash.<parameter>.to
+					$_.hash.<typename>.from - $_.hash.<parameter>.to
 				);
 				if $x ~~ m{ ('-->') } {
 					$child.append(
-						Perl6::Operator::Infix.from-int(
-							$_.hash.<parameter>.to +
-								$0.from,
-							$0.Str
-						)
+						Perl6::Operator::Infix.from-int($_.hash.<parameter>.to + $0.from, $0.Str)
 					)
 				}
 				$child.append(
 					self._typename( $_.hash.<typename> )
 				);
 			}
+            when self.assert-hash( $p, [< typename >], [< parameter param_sep >]) {
+                my Str $x = $p.Str.substr(0, $_.hash.<typename>.from);
+				if $x ~~ m{ ('-->') } {
+					$child.append(
+						Perl6::Operator::Infix.from-int($p.from, $0.Str)
+					)
+				}
+                $child.append(self._typename( $_.hash.<typename> ));
+            }
 			when self.assert-hash( $_,
 					[< parameter >],
 					[< param_sep >] ) {
@@ -7281,6 +7383,12 @@ class Perl6::Parser::Factory {
 					)
 				);
 			}
+            when self.assert-hash( $p, [< sym EXPR longname >], [< trait >] ) {
+                $child.append( self._sym($p.hash.<sym>));
+                $child.append(self._longname($p.hash.<longname>));
+                $child.append(self.__Optional_where($_));
+                $child.append(self._EXPR($_.hash.<EXPR>));
+            }
 			when self.assert-hash( $p,
 					[< longname sym term >], [< trait >] ) {
 				$child.append( self._sym( $p.hash.<sym> ) );
@@ -7304,6 +7412,13 @@ class Perl6::Parser::Factory {
 					self._longname( $p.hash.<longname> )
 				);
 			}
+            when self.assert-hash( $p, [< sym longname trait EXPR >]) {
+                $child.append( self._sym( $_.hash.<sym> ) );
+				$child.append(self._longname( $_.hash.<longname> ));
+                $child.append(self._trait( $_.hash.<trait> ));
+                $child.append(self.__Optional_where($_));
+                $child.append(self._EXPR($_.hash.<EXPR>));
+            }
 			default {
 				$child.fall-through( $p );
 			}
@@ -7372,6 +7487,46 @@ class Perl6::Parser::Factory {
                 $child.append(
 					self._circumfix( $_.hash.<circumfix> )
 				);
+            }
+            when self.assert-hash( $_, [< infix OPER >]) {
+                my Int $end = $p.list.elems - 1;
+                my Str $infix-str = $p.hash.<infix>.Str;
+                for $p.list.kv -> $k, $v {
+					if $v.Str {
+						$child.append(self._value( $p.list[$k].hash.<value> ));
+					}
+					if $k < $end {
+						my Str $x = $p.orig.Str.substr(
+							$child.child.[*-1].to,
+							$p.list.[$k+1].from -
+								$child.child.[*-1].to,
+						);
+						if $x ~~ m{ ($infix-str) } {
+							my Int $left-margin = $0.from;
+							$child.append(
+								Perl6::Operator::Infix.from-int(
+									$child.child.[*-1].to + $0.from,
+									$0.Str
+								)
+							);
+						}
+					}
+				}
+            }
+            when self.assert-hash( $_,
+                    [< dotty OPER >],
+                    [< postfix_prefix_meta_operator >]) {
+                if $_.list {
+                    for $_.list {
+                        if self.assert-hash($_, [< longname >]) {
+                            $child.append(self._longname($_.hash.<longname>));
+                        }
+                        else {
+                            $child.fall-through($_);
+                        }
+                    }
+                }
+                $child.append( self._dotty( $_.hash.<dotty> ) );
             }
 			when self.assert-hash( $_,
 					[< OPER prefix >],
